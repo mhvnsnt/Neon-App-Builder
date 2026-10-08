@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, Paperclip, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import * as motion from "motion/react-client";
+import { apiFetch } from '../lib/api';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -43,7 +44,7 @@ export function ChatArea({
       if (files.length > 0) {
         const formData = new FormData();
         files.forEach(f => formData.append('files', f));
-        const res = await fetch('/api/upload', {
+        const res = await apiFetch('/api/upload', {
           method: 'POST',
           body: formData
         });

@@ -1,24 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { apiFetch } from '../lib/api';
+
+type KeyStatus = { set: boolean; preview: string };
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
+  // The server never returns raw keys, only { set, preview }. Inputs start empty;
+  // a blank input on save means "keep the stored value".
   const [keys, setKeys] = useState<{ [key: string]: string }>({});
+  const [status, setStatus] = useState<{ [key: string]: KeyStatus }>({});
   const [activeModel, setActiveModel] = useState('gemini');
 
   useEffect(() => {
-    fetch('/api/keys')
-      .then(r => r.json())
-      .then(d => {
-        setKeys(d);
-        if (d.activeModel) setActiveModel(d.activeModel);
-      });
+    apiFetch('/api/keys')
+      .then(r => (r.ok ? r.json() : {}))
+      .then((d: any) => {
+        const { activeModel: am, ...rest } = d || {};
+        setStatus(rest);
+        if (am) setActiveModel(am);
+      })
+      .catch(console.error);
   }, []);
 
   const handleSave = async () => {
-    await fetch('/api/keys', {
+    const changed: { [key: string]: string } = {};
+    for (const [k, v] of Object.entries(keys)) {
+      if (typeof v === 'string' && v.trim()) changed[k] = v.trim();
+    }
+    await apiFetch('/api/keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...keys, activeModel })
+      body: JSON.stringify({ ...changed, activeModel })
     });
     onClose();
   };
@@ -65,7 +77,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 type="password"
                 value={keys[provider.id] || ''}
                 onChange={(e) => setKeys({ ...keys, [provider.id]: e.target.value })}
-                placeholder="sk-..."
+                placeholder={status[provider.id]?.set ? `saved (${status[provider.id].preview}), leave blank to keep` : 'sk-...'}
                 className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-fuchsia-400"
               />
             </div>

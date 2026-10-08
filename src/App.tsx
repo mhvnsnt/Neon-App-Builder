@@ -5,6 +5,7 @@ import { ChatArea } from './components/ChatArea';
 import { Menu } from 'lucide-react';
 import { SettingsModal } from './components/SettingsModal';
 import { TaskQueueDashboard } from './components/TaskQueueDashboard';
+import { apiFetch } from './lib/api';
 
 export interface ChatSummary {
   id: string;
@@ -49,7 +50,7 @@ export default function App() {
 
   const loadHistory = useCallback(async () => {
     try {
-      const res = await fetch('/api/history');
+      const res = await apiFetch('/api/history');
       if (res.ok) {
         const data = await res.json();
         setChats(data);
@@ -65,7 +66,7 @@ export default function App() {
 
   const loadChat = async (id: string) => {
     try {
-      const res = await fetch(`/api/chat/${id}`);
+      const res = await apiFetch(`/api/chat/${id}`);
       if (res.ok) {
         const data = await res.json();
         setActiveChat(data);
@@ -88,7 +89,7 @@ export default function App() {
   const handleDeleteChat = async (id: string) => {
     if (!window.confirm("Delete this build?")) return;
     try {
-      await fetch(`/api/chat/${id}`, { method: 'DELETE' });
+      await apiFetch(`/api/chat/${id}`, { method: 'DELETE' });
       await loadHistory();
       if (activeChat?.id === id) {
         setActiveChat(null);
@@ -113,7 +114,7 @@ export default function App() {
     }
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

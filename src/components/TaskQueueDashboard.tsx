@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, CheckCircle, XCircle, Clock, TerminalSquare, X } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 
 export function TaskQueueDashboard({ onClose }: { onClose: () => void }) {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -10,7 +11,7 @@ export function TaskQueueDashboard({ onClose }: { onClose: () => void }) {
     const fetchTasks = async () => {
        try {
          // We can use a new API endpoint we'll create: /api/tasks
-         const res = await fetch('/api/tasks');
+         const res = await apiFetch('/api/tasks');
          const data = await res.json();
          if (data.tasks) {
            setTasks(data.tasks);

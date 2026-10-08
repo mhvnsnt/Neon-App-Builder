@@ -1,0 +1,25 @@
+=== Neon-App-Builder proof · phase: AFTER ===
+
+[1] GET /api/keys (no auth)            -> HTTP 401  {"error":"Unauthorized"}
+[2] GET /api/history (no auth)         -> HTTP 401  {"error":"Unauthorized"}
+[3] POST /api/keys overwrite (no auth) -> HTTP 401  {"error":"Unauthorized"}
+[4] GET /api/keys (wrong token)        -> HTTP 401  {"error":"Unauthorized"}
+[5] GET /api/keys (valid token)        -> HTTP 200  {"gemini":{"set":true,"preview":"AI****EF"},"openai":{"set":true,"preview":"sk****uv"},"deepseek":{"set":true,"preview":"sk****89"},"activeModel":"gemini"}
+[6] GET /api/history (valid token)     -> HTTP 200  []
+
+[7] agent tool execute_command "id; echo PWNED > /tmp/neon-rce-proof"
+    Error: shell execution is disabled. Set ENABLE_SHELL_TOOL=1 to enable it (not recommended on shared or production hosts).
+    /tmp/neon-rce-proof exists? false
+
+[8] agent tool search_code injection  query='zz" /dev/null; echo INJECTED-$(whoami); echo "'
+    Search results for "zz\" /dev/null; echo INJECTED-$(whoami); echo \"": | No results found. | 
+
+[9] agent tool read_file path traversal "../../../../etc/hostname"
+    Error: path outside workspace is not allowed: ../../../../etc/hostname
+
+[10] agent tool background command "sleep 0; id"
+    Error: shell execution is disabled. Set ENABLE_SHELL_TOOL=1 to enable it (not recommended on shared or production hosts).
+
+[11] POST /api/keys with a blank openai field (valid token) must NOT wipe the stored key
+     HTTP 200  {"success":true}
+    stored openai key still present? true | activeModel = openai

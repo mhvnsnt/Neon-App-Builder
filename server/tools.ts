@@ -7,6 +7,22 @@ import http from 'http';
 
 const execAsync = promisify(exec);
 
+// --- security helpers (added by AI Code Doctor) ---
+// Shell tools are OFF unless the operator explicitly opts in.
+const SHELL_ENABLED = process.env.ENABLE_SHELL_TOOL === '1';
+const WORKSPACE_ROOT = path.resolve(process.cwd());
+
+/** Resolve a user-supplied path and refuse anything outside the workspace. */
+function safeResolve(userPath: string): string | null {
+  if (typeof userPath !== 'string') return null;
+  const resolved = path.resolve(WORKSPACE_ROOT, userPath);
+  const rel = path.relative(WORKSPACE_ROOT, resolved);
+  if (rel === '' ) return resolved;
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return resolved;
+}
+const DENY_SHELL = 'Error: shell execution is disabled. Set ENABLE_SHELL_TOOL=1 to enable it (not recommended on shared or production hosts).';
+
 // Store for background jobs
 const backgroundJobs = new Map<string, { process: any, logs: string, status: string }>();
 
@@ -16,7 +32,8 @@ export const ToolExecutor = {
       const { name, arguments: args } = toolCall;
       
       if (name === 'read_file') {
-        const filePath = path.join(process.cwd(), args.path);
+        const filePath = safeResolve(args.path);
+        if (!filePath) return `Error: path outside workspace is not allowed: ${args.path}`;
         if (!fs.existsSync(filePath)) return `Error: File not found at ${args.path}`;
         const content = fs.readFileSync(filePath, 'utf-8');
         // If file is huge, might want to limit or just return it
@@ -27,7 +44,8 @@ export const ToolExecutor = {
       }
       
       if (name === 'write_file') {
-        const filePath = path.join(process.cwd(), args.path);
+        const filePath = safeResolve(args.path);
+        if (!filePath) return `Error: path outside workspace is not allowed: ${args.path}`;
         const dir = path.dirname(filePath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(filePath, args.content, 'utf-8');
@@ -35,7 +53,8 @@ export const ToolExecutor = {
       }
 
       if (name === 'patch_file') {
-        const filePath = path.join(process.cwd(), args.path);
+        const filePath = safeResolve(args.path);
+        if (!filePath) return `Error: path outside workspace is not allowed: ${args.path}`;
         if (!fs.existsSync(filePath)) return `Error: File not found at ${args.path}`;
         let content = fs.readFileSync(filePath, 'utf-8');
         if (!content.includes(args.targetStr)) {
@@ -47,11 +66,13 @@ export const ToolExecutor = {
       }
       
       if (name === 'execute_command') {
-        const { stdout, stderr } = await execAsync(args.command, { cwd: process.cwd() });
+        if (!SHELL_ENABLED) return DENY_SHELL;
+        const { stdout, stderr } = await execAsync(args.command, { cwd: process.cwd(), timeout: 30000, maxBuffer: 1024 * 1024 });
         return `Command output:\nSTDOUT:\n${stdout}\n\nSTDERR:\n${stderr}`;
       }
 
       if (name === 'execute_background_command') {
+        if (!SHELL_ENABLED) return DENY_SHELL;
         const jobId = Math.random().toString(36).substring(7);
         const child = spawn(args.command, { shell: true, cwd: process.cwd() });
         
@@ -115,7 +136,8 @@ export const ToolExecutor = {
       }
       
       if (name === 'list_dir') {
-         const dirPath = path.join(process.cwd(), args.path || '.');
+         const dirPath = safeResolve(args.path || '.');
+         if (!dirPath) return `Error: path outside workspace is not allowed: ${args.path}`;
          if (!fs.existsSync(dirPath)) return `Error: Directory not found at ${args.path}`;
          const files = fs.readdirSync(dirPath, { withFileTypes: true });
          const fileList = files.map(f => `${f.isDirectory() ? '[DIR] ' : '[FILE]'} ${f.name}`).join('\n');
@@ -123,15 +145,17 @@ export const ToolExecutor = {
       }
 
       if (name === 'delete_file') {
-        const targetPath = path.join(process.cwd(), args.path);
+        const targetPath = safeResolve(args.path);
+        if (!targetPath) return `Error: path outside workspace is not allowed: ${args.path}`;
         if (!fs.existsSync(targetPath)) return `Error: File or directory not found at ${args.path}`;
         fs.rmSync(targetPath, { recursive: true, force: true });
         return `Successfully deleted ${args.path}`;
       }
 
       if (name === 'move_file') {
-        const srcPath = path.join(process.cwd(), args.source);
-        const destPath = path.join(process.cwd(), args.destination);
+        const srcPath = safeResolve(args.source);
+        const destPath = safeResolve(args.destination);
+        if (!srcPath || !destPath) return `Error: path outside workspace is not allowed`;
         if (!fs.existsSync(srcPath)) return `Error: Source not found at ${args.source}`;
         const destDir = path.dirname(destPath);
         if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
@@ -153,9 +177,16 @@ export const ToolExecutor = {
       }
 
       if (name === 'search_code') {
-        const cmd = `grep -rn "${args.query}" ${args.path || '.'}`;
-        const { stdout, stderr } = await execAsync(cmd, { cwd: process.cwd() }).catch(e => ({ stdout: e.stdout, stderr: e.stderr }));
-        return `Search results for "${args.query}":\n${stdout || 'No results found.'}\n${stderr}`;
+        const searchPath = safeResolve(args.path || '.');
+        if (!searchPath) return `Error: path outside workspace is not allowed: ${args.path}`;
+        // No shell: pass query/path as argv so metacharacters can't be injected. `--` stops option parsing.
+        const { spawnSync } = await import('child_process');
+        const r = spawnSync('grep', ['-rnF', '--', String(args.query ?? ''), searchPath], {
+          cwd: WORKSPACE_ROOT, encoding: 'utf-8', maxBuffer: 1024 * 1024, timeout: 15000, shell: false,
+        });
+        const stdout = r.stdout || '';
+        const stderr = r.stderr || '';
+        return `Search results for ${JSON.stringify(args.query)}:\n${stdout || 'No results found.'}\n${stderr}`;
       }
 
       return `Error: Unknown tool ${name}`;

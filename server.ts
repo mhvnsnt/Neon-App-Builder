@@ -1,7 +1,9 @@
+import './server/env.js';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './server/api.js';
+import { requireAuth } from './server/auth.js';
 
 async function startServer() {
   const app = express();
@@ -9,8 +11,12 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Mount API
-  app.use('/api', apiRouter);
+  if (!process.env.APP_AUTH_TOKEN) {
+    console.warn('[security] APP_AUTH_TOKEN is not set: all /api routes will return 503 until it is. See .env.example.');
+  }
+
+  // Mount API (authenticated)
+  app.use('/api', requireAuth, apiRouter);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {

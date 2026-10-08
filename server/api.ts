@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { BuilderAgent } from './agent.js';
 import { MemorySystem } from './memory.js';
+import { maskSecret } from './auth.js';
 
 export const apiRouter = Router();
 
@@ -71,11 +72,24 @@ apiRouter.delete('/chat/:id', (req, res) => {
 
 // Settings / Keys
 apiRouter.get('/keys', (req, res) => {
-  res.json(memory.getKeys());
+  // Never return raw secrets. Report presence + a masked preview only.
+  const keys = memory.getKeys() as Record<string, unknown>;
+  const safe: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(keys)) {
+    if (k === 'activeModel') { safe[k] = v; continue; }
+    safe[k] = { set: typeof v === 'string' && v.length > 0, preview: maskSecret(v) };
+  }
+  res.json(safe);
 });
 
 apiRouter.post('/keys', (req, res) => {
-  memory.saveKeys(req.body);
+  // Merge: only non-empty string values overwrite; blank/missing fields keep the stored key.
+  const body = (req.body && typeof req.body === 'object') ? req.body as Record<string, unknown> : {};
+  const merged: Record<string, string> = { ...(memory.getKeys() as Record<string, string>) };
+  for (const [k, v] of Object.entries(body)) {
+    if (typeof v === 'string' && v.trim()) merged[k] = v.trim();
+  }
+  memory.saveKeys(merged);
   res.json({ success: true });
 });
 
